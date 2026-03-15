@@ -718,6 +718,66 @@ def logo_b64() -> str:
 
 _logo = logo_b64()
 
+
+# ─────────────────────────────────────────────
+# AUTHENTIFICATION
+# ─────────────────────────────────────────────
+def _get_app_password() -> str:
+    try:
+        return st.secrets.get("app_password", "")
+    except Exception:
+        pass
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f).get("app_password", "")
+        except Exception:
+            pass
+    return ""
+
+
+_stored_pw = _get_app_password()
+if _stored_pw and not st.session_state.get("authenticated"):
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"], section[data-testid="stSidebar"] { display: none !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    _, col_c, _ = st.columns([1, 1.2, 1])
+    with col_c:
+        if _logo:
+            st.markdown(
+                f"<div style='text-align:center;padding:3rem 0 1.5rem;'>"
+                f"<img src='data:image/jpeg;base64,{_logo}' "
+                f"style='width:110px;border-radius:16px;box-shadow:0 6px 24px rgba(142,16,80,.25);'>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        st.markdown(
+            "<h2 style='text-align:center;color:#8E1050;font-weight:800;"
+            "margin-bottom:0.3rem;'>Dashboard Rédaction</h2>"
+            "<p style='text-align:center;color:#999;font-size:.85rem;"
+            "margin-bottom:1.8rem;'>Journal du Geek — accès réservé</p>",
+            unsafe_allow_html=True,
+        )
+        with st.form("login_form"):
+            pw_input = st.text_input(
+                "Mot de passe",
+                type="password",
+                placeholder="Entrez le mot de passe…",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button("Se connecter", use_container_width=True)
+        if submitted:
+            if pw_input == _stored_pw:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Mot de passe incorrect.")
+    st.stop()
+
+
 with st.sidebar:
     if _logo:
         st.markdown(
