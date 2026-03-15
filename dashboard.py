@@ -197,10 +197,13 @@ div[data-testid="stDataFrame"] {
 hr { border-color: var(--jdg-border) !important; margin: 1rem 0 !important; }
 
 /* ── Masquer les éléments UI Streamlit inutiles ── */
-#MainMenu, footer { visibility: hidden; }
+#MainMenu, footer, header { visibility: hidden !important; }
 [data-testid="ScrollToTopButton"] { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
+[data-testid="stHeader"] { display: none !important; }
 button[kind="scrollToTopButton"] { display: none !important; }
+.stAppHeader { display: none !important; }
+[data-testid="stAppViewBlockContainer"] { padding-top: 1rem !important; }
 /* Sidebar fixe — masquer le bouton de repli */
 [data-testid="collapsedControl"] { display: none !important; }
 [data-testid="stSidebarCollapseButton"] { display: none !important; }
