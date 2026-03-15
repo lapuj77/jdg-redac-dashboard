@@ -429,6 +429,66 @@ def get_game_releases(api_key: str, date_start: str, date_end: str) -> tuple[lis
         return [], str(e)
 
 
+def generate_article_ideas(df: pd.DataFrame, events: list, top_articles: list) -> str:
+    """Appel Claude API pour générer des idées d'articles."""
+    try:
+        import anthropic
+        try:
+            api_key = st.secrets.get("anthropic_key", "")
+        except Exception:
+            cfg = {}
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE) as f:
+                    cfg = json.load(f)
+            api_key = cfg.get("anthropic_key", "")
+
+        if not api_key:
+            return "❌ Clé API Anthropic manquante (ajouter `anthropic_key` dans les secrets)."
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        # Contexte : stats semaine
+        cat_stats = df.groupby("Catégorie")["Vues"].agg(["mean", "sum", "count"]).sort_values("mean", ascending=False)
+        top_cats = "\n".join([f"- {cat}: {int(row['mean']):,} vues/article ({int(row['count'])} articles)".replace(",", " ") for cat, row in cat_stats.head(4).iterrows()])
+        top_arts = "\n".join([f"- {a['titre']} ({a['vues']} vues)" for a in top_articles[:5]])
+        best_type = df.groupby("Type_Label")["Vues"].mean().idxmax()
+        events_txt = "\n".join([f"- {e['name']} ({e['start']}): {e['desc']}" for e in events[:6]]) or "Aucun événement majeur"
+
+        prompt = f"""Tu es rédacteur en chef adjoint du Journal du Geek (journaldugeek.com), site français couvrant : pop culture, nouvelles technologies, jeux vidéo, consommation et sciences.
+
+Voici les données de la semaine écoulée :
+
+**Top catégories (vues moyennes/article) :**
+{top_cats}
+
+**Format le plus performant cette semaine :** {best_type}
+
+**Top articles de la semaine :**
+{top_arts}
+
+**Événements & sorties de la semaine prochaine :**
+{events_txt}
+
+Sur la base de ces données, propose **10 idées d'articles concrets** pour la semaine prochaine.
+- Chaque idée doit avoir un **titre accrocheur** prêt à publier
+- Indique la **catégorie** et le **format recommandé** (article, test, critique, dossier, bon plan)
+- Priorise les sujets qui ont bien performé cette semaine
+- Exploite les événements à venir quand c'est pertinent
+- Adopte le ton JDG : direct, geek-friendly, un peu décalé
+
+Format de réponse : liste numérotée, une idée par ligne."""
+
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=1200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return message.content[0].text
+
+    except Exception as e:
+        return f"❌ Erreur : {e}"
+
+
 def get_tech_news_rss() -> list:
     """Tech & gaming news from Google News RSS — no key needed."""
     queries = [
@@ -1274,12 +1334,33 @@ with tab4:
         for cat, moy in top3_cats.items():
             st.markdown(f"- **{cat}** — {fmt(int(moy))} vues/article en moy.")
 
-        st.markdown("#### ✍️ Idées d'articles")
-        ideas = st.text_area(
+        st.markdown("#### ✨ Idées d'articles")
+        if st.button("🤖 Générer des idées avec Claude", use_container_width=True):
+            top_arts_data = [
+                {"titre": row["Titre"][:80], "vues": fmt(row["Vues"])}
+                for _, row in df.nlargest(5, "Vues").iterrows()
+            ]
+            with st.spinner("Claude réfléchit…"):
+                ideas_text = generate_article_ideas(df, events, top_arts_data)
+            st.session_state["generated_ideas"] = ideas_text
+
+        if "generated_ideas" in st.session_state:
+            st.markdown(
+                f"<div style='background:#fff;border:1px solid #E5C5D5;border-radius:12px;"
+                f"padding:1rem 1.2rem;font-size:.88rem;line-height:1.7;white-space:pre-wrap;'>"
+                f"{st.session_state['generated_ideas']}</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("🗑️ Effacer", key="clear_ideas"):
+                del st.session_state["generated_ideas"]
+                st.rerun()
+
+        st.text_area(
             "Notes libres",
-            placeholder="Sujets à traiter, angles intéressants…",
-            height=140,
+            placeholder="Vos propres idées…",
+            height=80,
             label_visibility="collapsed",
+            key="ideas_manual",
         )
 
     # ── Brief auto ──
