@@ -20,6 +20,7 @@ st.set_page_config(
     page_icon="📰",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={},
 )
 
 st.markdown("""
@@ -200,6 +201,10 @@ hr { border-color: var(--jdg-border) !important; margin: 1rem 0 !important; }
 [data-testid="ScrollToTopButton"] { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
 button[kind="scrollToTopButton"] { display: none !important; }
+/* Sidebar fixe — masquer le bouton de repli */
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
+section[data-testid="stSidebar"] { min-width: 280px !important; max-width: 280px !important; }
 </style>
 """, unsafe_allow_html=True)
 
