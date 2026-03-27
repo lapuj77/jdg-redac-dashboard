@@ -633,6 +633,9 @@ def load_archive_summaries() -> pd.DataFrame:
             [f for f in os.listdir(ARCHIVE_DIR) if f.endswith(".csv")], reverse=True
         )
 
+    MOIS_FR = ["janvier","février","mars","avril","mai","juin",
+               "juillet","août","septembre","octobre","novembre","décembre"]
+
     for fname in filenames:
         try:
             if _is_cloud():
@@ -647,10 +650,23 @@ def load_archive_summaries() -> pd.DataFrame:
             m = re.search(r"(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})", fname)
             w_s = m.group(1) if m else fname
             w_e = m.group(2) if m else fname
+            d_s = datetime.strptime(w_s, "%Y-%m-%d")
+            d_e = datetime.strptime(w_e, "%Y-%m-%d")
+            nb_jours = (d_e - d_s).days
+
+            is_monthly = nb_jours > 20
+            if is_monthly:
+                label = f"{MOIS_FR[d_s.month - 1].capitalize()} {d_s.year}"
+                type_label = "🗓️ Mensuel"
+            else:
+                label = f"{d_s.strftime('%d/%m')} → {d_e.strftime('%d/%m/%Y')}"
+                type_label = "📅 Hebdo"
+
             top_auth = df_a.groupby("Rédacteur")["Vues"].sum().idxmax()
             top_art  = df_a.loc[df_a["Vues"].idxmax(), "Titre"]
             rows.append({
-                "Semaine":       f"{datetime.strptime(w_s,'%Y-%m-%d').strftime('%d/%m')} → {datetime.strptime(w_e,'%Y-%m-%d').strftime('%d/%m/%Y')}",
+                "Période":       label,
+                "Type":          type_label,
                 "week_start":    w_s,
                 "filename":      fname,
                 "Vues totales":  df_a["Vues"].sum(),
@@ -1485,21 +1501,31 @@ with tab4:
 # TAB 5 — HISTORIQUE
 # ─────────────────────────────────────────────
 with tab5:
-    st.markdown("### 🗂️ Historique des semaines")
+    st.markdown("### 🗂️ Historique")
 
     hist = load_archive_summaries()
 
     if hist.empty:
-        st.info("Aucune semaine archivée pour l'instant. Les semaines s'accumulent automatiquement à chaque chargement de CSV.")
+        st.info("Aucune période archivée pour l'instant. Les données s'accumulent automatiquement à chaque chargement de CSV.")
     else:
+        # ── Filtre type ──
+        filtre = st.radio(
+            "Afficher",
+            ["Tout", "📅 Hebdo", "🗓️ Mensuel"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+        if filtre != "Tout":
+            hist = hist[hist["Type"] == filtre].reset_index(drop=True)
+
         nb_weeks = len(hist)
 
         # ── KPIs historique ──
         kpis_h = [
-            ("📅", str(nb_weeks),                                 "Semaines archivées"),
+            ("📅", str(nb_weeks),                                 "Périodes archivées"),
             ("👁️", fmt(hist["Vues totales"].sum()),               "Vues cumulées"),
             ("📝", str(hist["Articles"].sum()),                    "Articles au total"),
-            ("📈", fmt(int(hist["Vues totales"].mean())),          "Vues moy. / semaine"),
+            ("📈", fmt(int(hist["Vues totales"].mean())),          "Vues moy. / période"),
         ]
         cards_h = "".join(
             f"<div class='kpi-card'><div class='kpi-icon'>{ico}</div>"
@@ -1510,8 +1536,8 @@ with tab5:
 
         # ── Évolution vues totales ──
         fig_h1 = px.area(
-            hist, x="Semaine", y="Vues totales",
-            title="Évolution des vues totales par semaine",
+            hist, x="Période", y="Vues totales",
+            title="Évolution des vues totales",
             color_discrete_sequence=["#8E1050"],
             markers=True,
         )
@@ -1522,8 +1548,8 @@ with tab5:
         col_a, col_b = st.columns(2)
         with col_a:
             fig_h2 = px.bar(
-                hist, x="Semaine", y="Articles",
-                title="Nombre d'articles par semaine",
+                hist, x="Période", y="Articles",
+                title="Nombre d'articles par période",
                 color="Articles",
                 color_continuous_scale=["#F7EBF2", "#C4316B", "#5C0835"],
                 text="Articles",
@@ -1534,7 +1560,7 @@ with tab5:
 
         with col_b:
             fig_h3 = px.line(
-                hist, x="Semaine", y="Vues moyennes",
+                hist, x="Période", y="Vues moyennes",
                 title="Vues moyennes par article",
                 color_discrete_sequence=["#C4316B"],
                 markers=True,
@@ -1542,10 +1568,10 @@ with tab5:
             fig_h3.update_layout(height=280, margin=dict(t=40, b=10), xaxis_tickangle=-20)
             st.plotly_chart(fig_h3, use_container_width=True)
 
-        # ── Comparaison semaine courante vs précédente ──
+        # ── Comparaison période courante vs précédente ──
         if nb_weeks >= 2:
             st.markdown("---")
-            st.markdown("### 🔁 Comparaison semaine courante vs semaine précédente")
+            st.markdown("### 🔁 Comparaison période courante vs précédente")
             curr = hist.iloc[-1]
             prev = hist.iloc[-2]
 
@@ -1577,7 +1603,7 @@ with tab5:
 
         # ── Tableau récap ──
         st.markdown("---")
-        st.markdown("### 📋 Tableau de bord des semaines")
+        st.markdown("### 📋 Tableau de bord")
         display_hist = hist.drop(columns=["week_start", "filename"], errors="ignore").copy()
         display_hist["Vues totales"]  = display_hist["Vues totales"].apply(fmt)
         display_hist["Vues moyennes"] = display_hist["Vues moyennes"].apply(fmt)
