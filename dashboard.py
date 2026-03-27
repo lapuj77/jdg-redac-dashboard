@@ -345,6 +345,29 @@ def categorize(title: str) -> str:
     return max(scores, key=scores.get) if scores else "📦 Autre"
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_article_url(titre: str) -> str:
+    """Recherche l'URL d'un article sur JDG via la recherche interne."""
+    try:
+        query = " ".join(titre.split()[:6])  # 6 premiers mots suffisent
+        resp = requests.get(
+            "https://www.journaldugeek.com/",
+            params={"s": query},
+            timeout=5,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        if resp.status_code == 200:
+            match = re.search(
+                r'href="(https://www\.journaldugeek\.com/(?:\d{4}/\d{2}/\d{2}/|[^"]+?/)[^"]+?/)"',
+                resp.text,
+            )
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+    return ""
+
+
 @st.cache_data(show_spinner="Chargement du CSV…")
 def load_data(file) -> pd.DataFrame:
     df = pd.read_csv(file, sep=";", encoding="utf-8")
@@ -1048,14 +1071,21 @@ with tab1:
         medals = ["🥇", "🥈", "🥉"]
         cards = ""
         for i, (_, row) in enumerate(subset.head(3).iterrows()):
-            titre = row["Titre"][:65] + ("…" if len(row["Titre"]) > 65 else "")
+            titre_full = row["Titre"]
+            titre = titre_full[:65] + ("…" if len(titre_full) > 65 else "")
             color = MEDAL_COLORS[i]
+            url = get_article_url(titre_full)
+            titre_html = (
+                f"<a href='{url}' target='_blank' style='color:#1a0a12;text-decoration:none;"
+                f"border-bottom:1px dotted #8E1050;'>{titre}</a>"
+                if url else titre
+            )
             cards += (
                 f"<div style='background:#fff;border:1px solid #E5C5D5;border-left:4px solid {color};"
                 f"border-radius:10px;padding:.65rem .9rem;margin:.3rem 0;'>"
                 f"<div style='font-size:.95rem;line-height:1;margin-bottom:.25rem;'>{medals[i]}"
                 f"&nbsp;<span style='font-weight:800;color:#8E1050;'>{fmt(row['Vues'])} vues</span></div>"
-                f"<div style='font-size:.82rem;color:#1a0a12;line-height:1.35;margin-bottom:.2rem;'>{titre}</div>"
+                f"<div style='font-size:.82rem;color:#1a0a12;line-height:1.35;margin-bottom:.2rem;'>{titre_html}</div>"
                 f"<div style='font-size:.75rem;color:#7B4060;'>✍️ {row['Rédacteur']}</div>"
                 f"</div>"
             )
