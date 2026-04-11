@@ -350,15 +350,15 @@ def categorize(title: str) -> str:
     return max(scores, key=scores.get) if scores else "📦 Autre"
 
 
-@st.cache_data(show_spinner=False, ttl=3600)
+@st.cache_data(show_spinner=False, ttl=86400)
 def get_article_url(titre: str) -> str:
     """Recherche l'URL d'un article sur JDG via la recherche interne."""
     try:
-        query = " ".join(titre.split()[:6])  # 6 premiers mots suffisent
+        query = " ".join(titre.split()[:6])
         resp = requests.get(
             "https://www.journaldugeek.com/",
             params={"s": query},
-            timeout=5,
+            timeout=4,
             headers={"User-Agent": "Mozilla/5.0"},
         )
         if resp.status_code == 200:
@@ -371,6 +371,22 @@ def get_article_url(titre: str) -> str:
     except Exception:
         pass
     return ""
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def prefetch_urls(titres: tuple) -> dict:
+    """Récupère toutes les URLs en parallèle pour éviter les requêtes séquentielles."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    results = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(get_article_url, t): t for t in titres}
+        for f in as_completed(futures):
+            titre = futures[f]
+            try:
+                results[titre] = f.result()
+            except Exception:
+                results[titre] = ""
+    return results
 
 
 @st.cache_data(show_spinner="Chargement du CSV…")
@@ -951,6 +967,10 @@ elif archive_choice:
     else:
         df = load_data(os.path.join(ARCHIVE_DIR, archive_choice))
     filename = archive_choice
+
+# Préchargement parallèle des URLs dès que le CSV est connu
+if df is not None:
+    prefetch_urls(tuple(df["Titre"].tolist()))
 
 # ─────────────────────────────────────────────
 # LANDING PAGE (no file)
