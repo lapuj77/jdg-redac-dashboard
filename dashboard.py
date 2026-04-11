@@ -375,10 +375,11 @@ def get_article_url(titre: str) -> str:
 
 @st.cache_data(show_spinner=False, ttl=86400)
 def prefetch_urls(titres: tuple) -> dict:
-    """Récupère toutes les URLs en parallèle pour éviter les requêtes séquentielles."""
+    """Récupère les URLs en parallèle avec limite de concurrence."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    import time
     results = {}
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:
         futures = {ex.submit(get_article_url, t): t for t in titres}
         for f in as_completed(futures):
             titre = futures[f]
@@ -386,6 +387,7 @@ def prefetch_urls(titres: tuple) -> dict:
                 results[titre] = f.result()
             except Exception:
                 results[titre] = ""
+            time.sleep(0.2)  # 200ms entre chaque requête
     return results
 
 
@@ -968,9 +970,12 @@ elif archive_choice:
         df = load_data(os.path.join(ARCHIVE_DIR, archive_choice))
     filename = archive_choice
 
-# Préchargement parallèle des URLs dès que le CSV est connu
+# Préchargement des URLs uniquement pour les articles visibles (top 10 + top 5 par auteur)
 if df is not None:
-    prefetch_urls(tuple(df["Titre"].tolist()))
+    top10_titres = df.nlargest(10, "Vues")["Titre"].tolist()
+    top_par_auteur = df.groupby("Rédacteur").apply(lambda x: x.nlargest(5, "Vues")).reset_index(drop=True)["Titre"].tolist()
+    titres_a_prefetch = tuple(set(top10_titres + top_par_auteur))
+    prefetch_urls(titres_a_prefetch)
 
 # ─────────────────────────────────────────────
 # LANDING PAGE (no file)
