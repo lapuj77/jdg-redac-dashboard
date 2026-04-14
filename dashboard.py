@@ -350,9 +350,28 @@ def categorize(title: str) -> str:
     return max(scores, key=scores.get) if scores else "📦 Autre"
 
 
-@st.cache_data(show_spinner=False, ttl=86400)
+# ── Cache fichier persistant pour les URLs ──
+URL_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "url_cache.json")
+
+def _load_url_cache() -> dict:
+    try:
+        with open(URL_CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_url_cache(cache: dict):
+    try:
+        with open(URL_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
 def get_article_url(titre: str) -> str:
-    """Recherche l'URL d'un article sur JDG via la recherche interne."""
+    """Retourne l'URL d'un article — depuis le cache fichier ou via requête JDG."""
+    cache = _load_url_cache()
+    if titre in cache:
+        return cache[titre]
     try:
         query = " ".join(titre.split()[:6])
         resp = requests.get(
@@ -366,29 +385,29 @@ def get_article_url(titre: str) -> str:
                 r'href="(https://www\.journaldugeek\.com/(?:\d{4}/\d{2}/\d{2}/|[^"]+?/)[^"]+?/)"',
                 resp.text,
             )
-            if match:
-                return match.group(1)
+            url = match.group(1) if match else ""
+        else:
+            url = ""
     except Exception:
-        pass
-    return ""
+        url = ""
+    cache[titre] = url
+    _save_url_cache(cache)
+    return url
 
 
-@st.cache_data(show_spinner=False, ttl=86400)
-def prefetch_urls(titres: tuple) -> dict:
-    """Récupère les URLs en parallèle avec limite de concurrence."""
+def prefetch_urls(titres: tuple):
+    """Récupère les URLs manquantes en parallèle, max 3 workers, 300ms entre chaque."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import time
-    results = {}
+    cache = _load_url_cache()
+    manquantes = [t for t in titres if t not in cache]
+    if not manquantes:
+        return
     with ThreadPoolExecutor(max_workers=3) as ex:
-        futures = {ex.submit(get_article_url, t): t for t in titres}
+        futures = {ex.submit(get_article_url, t): t for t in manquantes}
         for f in as_completed(futures):
-            titre = futures[f]
-            try:
-                results[titre] = f.result()
-            except Exception:
-                results[titre] = ""
-            time.sleep(0.2)  # 200ms entre chaque requête
-    return results
+            f.result()
+            time.sleep(0.3)
 
 
 @st.cache_data(show_spinner="Chargement du CSV…")
@@ -970,12 +989,9 @@ elif archive_choice:
         df = load_data(os.path.join(ARCHIVE_DIR, archive_choice))
     filename = archive_choice
 
-# Préchargement des URLs uniquement pour les articles visibles (top 10 + top 5 par auteur)
+# Préchargement de toutes les URLs du CSV — uniquement celles absentes du cache fichier
 if df is not None:
-    top10_titres = df.nlargest(10, "Vues")["Titre"].tolist()
-    top_par_auteur = df.groupby("Rédacteur").apply(lambda x: x.nlargest(5, "Vues")).reset_index(drop=True)["Titre"].tolist()
-    titres_a_prefetch = tuple(set(top10_titres + top_par_auteur))
-    prefetch_urls(titres_a_prefetch)
+    prefetch_urls(tuple(df["Titre"].tolist()))
 
 # ─────────────────────────────────────────────
 # LANDING PAGE (no file)
