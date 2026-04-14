@@ -968,6 +968,18 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # Bouton mise à jour manuelle du cache URLs
+    if st.button("🔄 Rafraîchir les liens articles"):
+        cache = _load_url_cache()
+        # Vider uniquement les entrées sans URL trouvée pour retenter
+        vides = [k for k, v in cache.items() if not v]
+        for k in vides:
+            del cache[k]
+        _save_url_cache(cache)
+        st.cache_data.clear()
+        st.success(f"{len(vides)} liens retentés — rechargement en cours…")
+        st.rerun()
+
 # ─────────────────────────────────────────────
 # LOAD DATA
 # ─────────────────────────────────────────────
